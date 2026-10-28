@@ -864,6 +864,12 @@ export default function DashboardPage() {
     const usage = courseSlotUsage(course)
     return { used: summary.used + usage.used, maximum: summary.maximum + usage.maximum, remaining: summary.remaining + usage.remaining }
   }, { used: 0, maximum: 0, remaining: 0 })
+  const schedulableCourses = activeCourses
+    .filter(course => {
+      const usage = courseSlotUsage(course)
+      return usage.maximum > 0 && usage.remaining > 0
+    })
+    .map(course => ({ course, usage: courseSlotUsage(course) }))
   const initials = user?.displayName ? user.displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : user?.email?.[0]?.toUpperCase() || '?'
   const activeMod = COURSE_MODULES.find(m => m.id === activeModule)
   const hasPasswordProvider = (user?.providerData || []).some(p => p.providerId === 'password')
@@ -1887,11 +1893,27 @@ export default function DashboardPage() {
                       <div style={{ width:'32px', height:'32px', borderRadius:'8px', background:'linear-gradient(135deg,rgba(253,188,1,0.1),rgba(253,188,1,0.04))', display:'flex', alignItems:'center', justifyContent:'center' }}>{I.calendar}</div>
                       Book More Lessons
                     </h3>
-                    <p style={{ fontFamily:'var(--font-body)', fontSize:'1rem', lineHeight:1.7, color:'#475569', margin:'0 0 1rem' }}>Lesson dates and times are reserved while you select a package. You may book from one lesson up to the package's maximum slot allowance.</p>
+                    <p style={{ fontFamily:'var(--font-body)', fontSize:'1rem', lineHeight:1.7, color:'#475569', margin:'0 0 1rem' }}>Select dates and times for any paid package that still has included lessons. You can choose up to the remaining number shown for each package.</p>
                     <div style={{ padding:'1rem', marginBottom:'1.25rem', border:'1px solid #DBEAFE', borderRadius:'12px', background:'#EFF6FF', color:'#1E3A8A', fontFamily:'var(--font-body)', fontSize:'0.92rem', lineHeight:1.6 }}>
-                      To add or replace lessons, choose a package and complete its date and time selection. Existing confirmed bookings appear beside this panel.
+                      Choose an available date and time. There is no additional payment for included remaining lessons.
                     </div>
-                    <button type="button" onClick={() => navigate('/pricing')} className="dash-btn-gold" style={{ width:'100%', padding:'0.9rem', borderRadius:'14px', border:'none', fontFamily:'var(--font-mono)', fontSize:'0.85rem', letterSpacing:'0.12em', textTransform:'uppercase', fontWeight:700, cursor:'pointer' }}>View Packages &amp; Times</button>
+                    {schedulableCourses.length ? (
+                      <div style={{ display:'grid', gap:'.65rem' }}>
+                        {schedulableCourses.map(({ course, usage }) => (
+                          <div key={course.enrollmentId || `${course.id}-${course.enrolledAt || ''}`} style={{ padding:'.8rem', border:'1px solid #D7E4F2', borderRadius:'11px', background:'#fff' }}>
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'.65rem', flexWrap:'wrap' }}>
+                              <div>
+                                <strong style={{ display:'block', color:DARK, fontFamily:'var(--font-body)', fontSize:'.92rem' }}>{course.title || course.planName || 'Driving package'}</strong>
+                                <span style={{ color:'#475569', fontFamily:'var(--font-body)', fontSize:'.8rem' }}>{usage.remaining} of {usage.maximum} lesson slot{usage.maximum === 1 ? '' : 's'} available</span>
+                              </div>
+                              <button type="button" onClick={() => navigate(`/pricing?plan=${encodeURIComponent(course.id)}&enrollment=${encodeURIComponent(course.enrollmentId || '')}`)} style={{ padding:'.55rem .7rem', border:0, borderRadius:'8px', background:'#0755AE', color:'#fff', fontFamily:'var(--font-body)', fontSize:'.8rem', fontWeight:800, cursor:'pointer' }}>Schedule lessons</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => navigate('/pricing')} className="dash-btn-gold" style={{ width:'100%', padding:'0.9rem', borderRadius:'14px', border:'none', fontFamily:'var(--font-mono)', fontSize:'0.85rem', letterSpacing:'0.12em', textTransform:'uppercase', fontWeight:700, cursor:'pointer' }}>View Packages &amp; Times</button>
+                    )}
                   </div>
                   <div className="dash-anim dash-d1 dash-card-premium">
                     <div style={{ position:'absolute', top:0, left:0, right:0, height:'3px', background:`linear-gradient(90deg,${SKY_BLUE},${GOLD_BRIGHT},${SKY_BLUE})`, backgroundSize:'200% 100%', animation:'dashShimmer 5s linear infinite' }} />

@@ -3750,7 +3750,14 @@ app.post('/api/users/:uid/cart', async (req, res) => {
       if (purchaseOnly && slots.length) throw new HttpError(400, 'A package-only purchase cannot include lesson times.')
       const customDmvAppointment = slots.length > 0 && isDmvRentalTier(tier) && slots.every(slot => isCustomAppointmentTime(slot.timeSlot))
       if (!purchaseOnly) await assertSlotsOpenForBooking(slots, session, 409, { dateAvailabilityOnly: customDmvAppointment })
-      const bookingLocation = purchaseOnly ? null : await bookingLocationByName(req.body?.city, req.body?.cityZip, session)
+      // A package-only purchase can still carry a selected service location.
+      // Validate it when both fields are supplied so its Near/Long price does
+      // not silently fall back to the default rate. Older checkout paths that
+      // have no ZIP retain their historical default-rate behaviour.
+      const hasSelectedPurchaseLocation = purchaseOnly && cleanText(req.body?.city, 100) && cleanText(req.body?.cityZip, 10)
+      const bookingLocation = !purchaseOnly || hasSelectedPurchaseLocation
+        ? await bookingLocationByName(req.body?.city, req.body?.cityZip, session)
+        : null
       const locationPrice = pricingForBookingLocation(tier, bookingLocation)
       const user = await usersCol.findOne({ uid }, { session, projection: { courses: 1 } })
       const courses = user?.courses || []
@@ -3919,7 +3926,10 @@ async function processCartCheckout(req, { quoteOnly = false, couponCode = '', co
         const slots = pickupSlotsFromCourse(item, tier)
         if (purchaseOnly && slots.length) throw new HttpError(409, 'A package-only purchase cannot include lesson times.')
         const customDmvAppointment = slots.length > 0 && isDmvRentalTier(tier) && slots.every(slot => isCustomAppointmentTime(slot.timeSlot))
-        const bookingLocation = purchaseOnly ? null : await bookingLocationByName(item.city, item.cityZip, session)
+        const hasSelectedPurchaseLocation = purchaseOnly && cleanText(item.city, 100) && cleanText(item.cityZip, 10)
+        const bookingLocation = !purchaseOnly || hasSelectedPurchaseLocation
+          ? await bookingLocationByName(item.city, item.cityZip, session)
+          : null
         const locationPrice = pricingForBookingLocation(tier, bookingLocation)
         const requestedEnrollmentId = cleanText(item.enrollmentId, 160)
         const repeatableCertificate = isDuplicateCertificatePlan(courseId)

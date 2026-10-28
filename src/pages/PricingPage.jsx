@@ -47,9 +47,12 @@ const slotInstruction = (tier) => {
     : `Select 1 to ${limit} date & time slots`
 }
 
-const activeEnrollmentFor = (courses, tier) => [...(Array.isArray(courses) ? courses : [])].reverse().find(course => {
+const activeEnrollmentFor = (courses, tier, requestedEnrollmentId = '') => [...(Array.isArray(courses) ? courses : [])].reverse().find(course => {
   const status = String(course?.status || 'Enrolled').trim().toLowerCase()
+  const matchesEnrollment = !requestedEnrollmentId
+    || String(course?.enrollmentId || '') === requestedEnrollmentId
   return String(course?.id) === String(tier?.id)
+    && matchesEnrollment
     && !['cancelled', 'refunded', 'refund pending'].includes(status)
 }) || null
 
@@ -179,7 +182,8 @@ export default function PricingPage() {
     return () => { active = false }
   }, [user, enrollmentLoadVersion])
 
-  const enrollmentForPlan = (tier) => activeEnrollmentFor(enrolledCourses, tier)
+  const requestedEnrollmentId = new URLSearchParams(location.search).get('enrollment') || ''
+  const enrollmentForPlan = (tier) => activeEnrollmentFor(enrolledCourses, tier, requestedEnrollmentId)
   const locationSelectionValue = locationItem => String(locationItem?.key || `${locationItem?.name || ''}::${locationItem?.zipCode || ''}`)
   const locationForCity = city => bookingLocations.find(item => locationSelectionValue(item) === city)
     || bookingLocations.find(item => item.name === city)
@@ -386,6 +390,47 @@ export default function PricingPage() {
       navigate('/cart')
     } catch (bookingError) {
       setError(bookingError.message || 'One or more packages could not be saved. Your other selections remain in the cart.')
+      setStep('calendar')
+    }
+  }
+
+  // A student can purchase a new package before choosing lesson times. After
+  // payment, the existing continuation flow lets them use the package's
+  // remaining included slots from the dashboard without another charge.
+  const handlePayNowScheduleLater = async () => {
+    if (!selectedTier || !selectedCity) {
+      setError('Please select your city before continuing to payment.')
+      return
+    }
+    if (planIsContinuation(selectedTier)) {
+      setError('This package is already paid for. Choose its remaining lesson times instead.')
+      return
+    }
+
+    setStep('loading')
+    try {
+      const result = await addToCart({
+        id: selectedTier.id,
+        title: selectedTier.planName,
+        price: planLocationPrice(selectedTier, selectedCity),
+        cityDistance: distanceForCity(selectedCity),
+        cityZip: zipForCity(selectedCity),
+        priceBasis: distanceForCity(selectedCity),
+        nearPrice: locationPlanPrice(selectedTier, 'Near'),
+        longPrice: locationPlanPrice(selectedTier, 'Long'),
+        city: cityNameForSelection(selectedCity),
+        purchaseOnly: true,
+        pickupSlots: [],
+      })
+      if (!result?.ok) throw new Error(result?.error || 'Unable to prepare this package for payment.')
+      if (!user) {
+        saveBookingReturn('/cart')
+        navigate('/booking/register', { state: { from: '/cart' } })
+        return
+      }
+      navigate('/cart')
+    } catch (bookingError) {
+      setError(bookingError.message || 'Unable to prepare this package for payment. Please try again.')
       setStep('calendar')
     }
   }
@@ -656,7 +701,7 @@ export default function PricingPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <div>
                   <div style={{ color: '#334155', fontFamily: 'var(--font-body)', fontSize: '0.75rem' }}>Select Your Preferred Slots</div>
-                  <div style={{ color: '#334155', fontFamily: 'var(--font-body)', fontSize: '0.68rem', marginTop: '0.15rem' }}>Choose at least 1 slot for each plan, up to its available package allowance.</div>
+                  <div style={{ color: '#334155', fontFamily: 'var(--font-body)', fontSize: '0.68rem', marginTop: '0.15rem' }}>Select an available date and time slot, or pay now and schedule later from your dashboard.</div>
                   <strong style={{ color: '#0755ae', fontFamily: 'var(--font-body)', fontSize: '0.8rem' }}>{calendarMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' })}</strong>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -744,6 +789,14 @@ export default function PricingPage() {
               </div>
 
               {error && <p style={{ color: '#dc2626', margin: '0.45rem 0 0', fontFamily: 'var(--font-body)', fontSize: '0.75rem' }}>{error}</p>}
+              {!planIsContinuation(selectedTier) && selectedSlots.length === 0 && (
+                <div style={{ marginTop: '0.6rem', padding: '0.7rem', border: '1px solid #BFDBFE', borderRadius: '7px', background: '#EFF6FF' }}>
+                  <p style={{ margin: '0 0 0.55rem', color: '#1E3A8A', fontFamily: 'var(--font-body)', fontSize: '0.74rem', lineHeight: 1.45 }}>
+                    Not ready to choose a lesson time? Pay for this package now and select up to your included lesson slots later from your dashboard.
+                  </p>
+                  <button type="button" onClick={handlePayNowScheduleLater} style={{ width: '100%', minHeight: '38px', border: '1px solid #0755AE', borderRadius: '8px', background: '#fff', color: '#0755AE', fontFamily: 'var(--font-body)', fontWeight: 800, cursor: 'pointer' }}>Pay Now, Schedule Later</button>
+                </div>
+              )}
               <button onClick={() => { setStep(null); setSelectedTier(null); setPendingDate('') }} style={{ width: '100%', marginTop: '0.6rem', minHeight: '34px', border: 0, borderRadius: '6px', background: '#747f88', color: '#fff', fontFamily: 'var(--font-body)', fontWeight: 700, cursor: 'pointer' }}>+ Add More Plans</button>
               <div style={{ margin: '0.45rem 0', color: '#08284a', fontFamily: 'var(--font-body)', fontSize: '0.8rem', fontWeight: 800 }}>Additional amount due: ${plansTotal.toFixed(2)}</div>
               {selectedPlans.some(plan => planIsContinuation(plan.tier)) && <div style={{ margin:'-0.2rem 0 0.5rem', color:'#15803D', fontFamily:'var(--font-body)', fontSize:'0.72rem', fontWeight:700 }}>Remaining lessons from an enrolled package are included at no extra charge.</div>}
