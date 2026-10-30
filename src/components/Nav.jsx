@@ -167,18 +167,21 @@ export default function Nav() {
               ))}
             </ul>}
 
+            {/* Cart remains available to guests; guest selections are stored locally
+                and are restored after sign-in. */}
+            <Link
+              to="/cart"
+              className={`hidden lg:flex nav-premium-action nav-cart-action ${isOnlineCourse ? 'on-light' : ''}`}
+              aria-label={cartCount > 0 ? `My cart, ${cartCount} ${cartCount === 1 ? 'course' : 'courses'}` : 'My cart, empty'}
+              title={cartCount > 0 ? `${cartCount} ${cartCount === 1 ? 'course' : 'courses'} in cart` : 'Cart is empty'}
+            >
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></svg>
+              {cartCount > 0 && <span className="nav-cart-badge" aria-hidden="true">{cartCount}</span>}
+            </Link>
+
             {/* Auth - Desktop */}
             {user ? (
               <>
-                <Link
-                  to="/cart"
-                  className={`hidden lg:flex nav-premium-action nav-cart-action ${isOnlineCourse ? 'on-light' : ''}`}
-                  aria-label={cartCount > 0 ? `My cart, ${cartCount} ${cartCount === 1 ? 'course' : 'courses'}` : 'My cart, empty'}
-                  title={cartCount > 0 ? `${cartCount} ${cartCount === 1 ? 'course' : 'courses'} in cart` : 'Cart is empty'}
-                >
-                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></svg>
-                  {cartCount > 0 && <span className="nav-cart-badge" aria-hidden="true">{cartCount}</span>}
-                </Link>
                 <div style={{ position: 'relative' }} className="hidden lg:block">
                 <button
                   ref={profileButtonRef}
@@ -266,6 +269,17 @@ export default function Nav() {
               </div>
             )}
 
+            {/* Keep a direct cart shortcut beside the mobile menu too. */}
+            <Link
+              to="/cart"
+              className={`lg:hidden nav-premium-action nav-cart-action ${isOnlineCourse ? 'on-light' : ''}`}
+              style={{ display: isOnlineCourse ? 'none' : 'flex' }}
+              aria-label={cartCount > 0 ? `My cart, ${cartCount} ${cartCount === 1 ? 'course' : 'courses'}` : 'My cart, empty'}
+            >
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></svg>
+              {cartCount > 0 && <span className="nav-cart-badge" aria-hidden="true">{cartCount}</span>}
+            </Link>
+
             {/* Mobile Hamburger */}
             <button
               className="lg:hidden"
@@ -340,6 +354,10 @@ export default function Nav() {
             ))}
           </ul>
           <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <Link to="/cart" onClick={() => setOpen(false)} className="nav-mobile-link" style={{ color: '#FDBC01', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>My Cart</span>
+              {cartCount > 0 && <span style={{ background: 'linear-gradient(135deg,#F43F5E,#C8102E)', color: '#fff', border: '2px solid #fff', borderRadius: '999px', minWidth: '26px', height: '26px', padding: '0 7px', fontSize: '0.8rem', lineHeight: 1, fontFamily: 'var(--font-mono)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(153,27,27,0.42)' }}>{cartCount}</span>}
+            </Link>
             {user ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.75rem' }}>
@@ -352,10 +370,6 @@ export default function Nav() {
                   </div>
                 </div>
                 <Link to="/dashboard" onClick={() => setOpen(false)} className="nav-mobile-link" style={{ color: '#FDBC01' }}>My Dashboard</Link>
-                <Link to="/cart" onClick={() => setOpen(false)} className="nav-mobile-link" style={{ color: '#FDBC01', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>My Cart</span>
-                  {cartCount > 0 && <span style={{ background: 'linear-gradient(135deg,#F43F5E,#C8102E)', color: '#fff', border: '2px solid #fff', borderRadius: '999px', minWidth: '26px', height: '26px', padding: '0 7px', fontSize: '0.8rem', lineHeight: 1, fontFamily: 'var(--font-mono)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(153,27,27,0.42)' }}>{cartCount}</span>}
-                </Link>
                 <button onClick={handleSignOut} className="nav-mobile-link" style={{ color: '#DC2626', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', width: '100%' }}>Sign Out</button>
               </>
             ) : (
