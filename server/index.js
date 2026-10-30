@@ -1950,7 +1950,11 @@ async function effectiveAvailabilitySlots(filter, session) {
         : item.status === 'blocked'
           ? 'blocked'
           : 'available'
-    return { ...item, status }
+    return {
+      ...item,
+      status,
+      bookingId: lock?.bookingId ? String(lock.bookingId) : '',
+    }
   })
 }
 
@@ -6362,7 +6366,7 @@ app.get('/api/admin/availability', async (req, res) => {
     const pages = Math.max(1, Math.ceil(total / limit))
     const safePage = Math.min(page, pages)
     const items = ordered.slice((safePage - 1) * limit, safePage * limit)
-      .map(({ _id, slotKey, date, time, status, instructorId, instructorName, createdAt, updatedAt }) => ({ _id, slotKey, date, time, status, instructorId, instructorName, createdAt, updatedAt }))
+      .map(({ _id, slotKey, date, time, status, bookingId, instructorId, instructorName, createdAt, updatedAt }) => ({ _id, slotKey, date, time, status, bookingId, instructorId, instructorName, createdAt, updatedAt }))
     res.json({ items, total, page: safePage, pages, limit })
   } catch (error) {
     sendServerError(res, error, 'Admin availability lookup failed')
@@ -6928,6 +6932,13 @@ app.put('/api/admin/bookings/:id/status', async (req, res) => {
       const booking = await bookingsCol.findOne({ _id: bookingId }, { session })
       if (!booking) throw new HttpError(404, 'Booking not found.')
       const status = validateAdminBookingStatusChange(booking, req.body?.status)
+      const availabilityStatus = cleanText(req.body?.availabilityStatus, 20).toLowerCase()
+      if (availabilityStatus && !['available', 'blocked'].includes(availabilityStatus)) {
+        throw new HttpError(400, 'Availability must be Available or Unavailable.')
+      }
+      if (availabilityStatus && status !== 'cancelled') {
+        throw new HttpError(400, 'Availability can only be changed when cancelling a booking.')
+      }
       const now = new Date().toISOString()
       const set = { status, updatedAt: now, statusUpdatedBy: req.auth.uid }
       const unset = {}
@@ -6950,6 +6961,19 @@ app.put('/api/admin/bookings/:id/status', async (req, res) => {
         set.cancelledAt = booking.cancelledAt || now
         set.cancellationReason = 'admin_status_change'
         await bookingSlotsCol.deleteMany({ bookingId }, { session })
+
+        if (availabilityStatus) {
+          const availabilitySlotKey = cleanText(booking.availabilitySlotKey, 240)
+            || bookingSlotKey(booking.date, booking.timeSlot, booking.instructorId)
+          const availabilityResult = await availabilityCol.updateOne(
+            { slotKey: availabilitySlotKey },
+            { $set: { status: availabilityStatus, updatedAt: now, updatedBy: req.auth.uid } },
+            { session }
+          )
+          if (!availabilityResult.matchedCount) {
+            throw new HttpError(404, 'The linked availability slot was not found. The booking was not changed.')
+          }
+        }
 
         if (booking.userId && booking.courseId !== undefined && booking.courseId !== null && booking.courseId !== '') {
           const profile = await usersCol.findOne({ uid: booking.userId }, { session, projection: { courses: 1 } })
