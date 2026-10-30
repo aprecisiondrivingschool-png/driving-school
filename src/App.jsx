@@ -173,11 +173,7 @@ function AppRoutes() {
                   <DashboardPage />
                 </ProtectedRoute>
               } />
-              <Route path="/cart" element={
-                <ProtectedRoute>
-                  <CartPage />
-                </ProtectedRoute>
-              } />
+              <Route path="/cart" element={<CartPage />} />
               <Route path="/payment" element={
                 <ProtectedRoute>
                   <PaymentPage />
