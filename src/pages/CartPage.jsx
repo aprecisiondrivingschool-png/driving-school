@@ -74,6 +74,10 @@ export default function CartPage() {
         setError(result.error || 'Checkout failed. Please try again.')
       }
     } catch (checkoutError) {
+      // A 409 means a hold may have expired or been released while the cart
+      // was open. Reload it so the expired-selection state and the next
+      // action shown to the student match the server's authoritative state.
+      if (checkoutError?.status === 409) await refreshCart()
       setError(checkoutError.message || 'Checkout failed. Please try again.')
     }
     setBusy(false)

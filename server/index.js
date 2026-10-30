@@ -3925,7 +3925,6 @@ async function processCartCheckout(req, { quoteOnly = false, couponCode = '', co
         const purchaseOnly = item.purchaseOnly === true
         const slots = pickupSlotsFromCourse(item, tier)
         if (purchaseOnly && slots.length) throw new HttpError(409, 'A package-only purchase cannot include lesson times.')
-        const customDmvAppointment = slots.length > 0 && isDmvRentalTier(tier) && slots.every(slot => isCustomAppointmentTime(slot.timeSlot))
         const hasSelectedPurchaseLocation = purchaseOnly && cleanText(item.city, 100) && cleanText(item.cityZip, 10)
         const bookingLocation = !purchaseOnly || hasSelectedPurchaseLocation
           ? await bookingLocationByName(item.city, item.cityZip, session)
@@ -3984,7 +3983,10 @@ async function processCartCheckout(req, { quoteOnly = false, couponCode = '', co
           if (!purchaseOnly) validateSlotCountForTier(slots, tier, 409, `The ${tier.planName} selection`)
           allowance = packageSlotAllowance({}, tier, [], slots.length)
         }
-        if (!purchaseOnly) await assertSlotsOpenForBooking(slots, session, 409, { dateAvailabilityOnly: customDmvAppointment })
+        // Cart creation already verified availability and created a held
+        // reservation for every selected slot. Rechecking for an *available*
+        // slot here would reject the customer's own valid hold as unavailable.
+        // The active hold and its companion held booking are verified below.
         verifiedItems.push({
           ...item,
           id: courseId,
@@ -4022,7 +4024,9 @@ async function processCartCheckout(req, { quoteOnly = false, couponCode = '', co
             expiresAt: { $gt: now },
           }, { session })
           if (!lock) {
-            throw new HttpError(409, 'A reserved time slot expired or is no longer available. Please select the slot again.')
+            const error = new HttpError(409, 'A reserved time slot expired or is no longer available. Please select the slot again.')
+            error.expiredCartCourseId = courseId
+            throw error
           }
           const heldBooking = await bookingsCol.findOne({
             _id: lock.bookingId,
@@ -4031,7 +4035,11 @@ async function processCartCheckout(req, { quoteOnly = false, couponCode = '', co
             ...(enrollmentScope ? { enrollmentId: enrollmentScope } : {}),
             status: 'held',
           }, { session })
-          if (!heldBooking) throw new HttpError(409, 'A reserved time slot is no longer available. Please select it again.')
+          if (!heldBooking) {
+            const error = new HttpError(409, 'A reserved time slot is no longer available. Please select it again.')
+            error.expiredCartCourseId = courseId
+            throw error
+          }
           holds.push({ lock, booking: heldBooking, enrollmentId })
         }
       }
@@ -4265,6 +4273,20 @@ async function processCartCheckout(req, { quoteOnly = false, couponCode = '', co
     })
 }
 
+async function markExpiredCartSelection(uid, courseId) {
+  if (!uid || !courseId || !cartsCol) return
+  await cartsCol.updateOne(
+    { uid },
+    {
+      $set: {
+        'items.$[expired].holdExpired': true,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+    { arrayFilters: [{ 'expired.id': String(courseId), 'expired.purchaseOnly': { $ne: true } }] }
+  )
+}
+
 async function checkoutCartHandler(req, res) {
   try {
     const checkout = await processCartCheckout(req)
@@ -4272,6 +4294,13 @@ async function checkoutCartHandler(req, res) {
     const { bookingIds: _bookingIds, ...publicCheckout } = checkout
     return res.json({ ok: true, ...publicCheckout })
   } catch (error) {
+    if (error.expiredCartCourseId) {
+      try {
+        await markExpiredCartSelection(req.auth?.uid, error.expiredCartCourseId)
+      } catch (markError) {
+        console.warn('Unable to mark expired cart reservation:', markError?.message || markError)
+      }
+    }
     return res.status(error.status || 500).json({
       ok: false,
       error: error.status ? error.message : 'Checkout could not be completed. Please try again.',
